@@ -31,12 +31,13 @@ if not os.path.exists(tmpdir):
 
 cwd = os.getcwd()
 
-
 # dump the current environment
-env = open(tmpdir+'/environment.sh','w')
-for k,v in os.environ.iteritems():
-    env.write('export '+k+'="'+v+'"\n')
-env.close()
+with open(tmpdir+'/environment.sh','w') as env:
+    for k,v in os.environ.iteritems():
+        # Strange patch
+        if k.startswith('BASH_FUNC_module'): continue
+
+        env.write('export '+k+'="'+v+'"\n')
 
 
 stdout = tmpdir+'/out.txt'

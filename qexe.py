@@ -1,57 +1,57 @@
 #!/usr/bin/env python
 
 import tempfile
-import os.path
+import shutil
+import os
 import sys
 import stat
-import optparse
+import argparse
+import subprocess
 
-usage = 'usage: %prog -t <tag> "commands"'
-parser = optparse.OptionParser(usage)
-parser.add_option('-t','--tag',dest='tag',help='Tag ', default=None)
-parser.add_option('-q','--queue',dest='queue',help='Queue', default='short.q')
-parser.add_option('-n','--dryrun',dest='dryrun' , help='Dryrun', default=False, action='store_true')
+from os.path import exists,join
 
-(opt, args) = parser.parse_args()
-if opt.tag is None:
-    parser.error('Tag not defined!')
+# usage = 'usage: %prog'
+parser = argparse.ArgumentParser()
+parser.add_argument('jid',help='Job ID', default=None)
+parser.add_argument('-q','--queue',dest='queue',help='Queue', default='short.q')
+parser.add_argument('-n','--dryrun',dest='dryrun' , help='Dryrun', default=False, action='store_true')
+parser.add_argument('cmd', metavar='cmd', nargs='+',
+                   help='Commands')
+# Let's go
+args = parser.parse_args()
+if args.jid is None:
+    parser.error('Job ID not defined!')
 
-tag = opt.tag
-queue = opt.queue
-
-cmd = ' '.join(args)
-print 'Preparing the execution of',cmd,'on the batch system'
-
-prefix = os.getenv("HOME")+'/tmp/qexe/'
-os.system('mkdir -p '+prefix)
-# tmpdir = tempfile.mkdtemp(prefix=prefix+'tmp_'+tag+'_')
-tmpdir = prefix+'/'+tag+'_qexe'
-if not os.path.exists(tmpdir):
-    os.makedirs(tmpdir)
+# cmd = ' '.join(args)
+cmd = ' '.join(args.cmd)
+print 'Preparing the execution of \''+cmd+'\' on the batch system'
 
 cwd = os.getcwd()
 
-# dump the current environment
-with open(tmpdir+'/environment.sh','w') as env:
+# Create a local directory where to store jobs
+qdir = join(cwd,'qexe',args.jid)
+
+# Cleanup
+if exists(qdir):
+    shutil.rmtree(qdir)
+    print 'Old directory',qdir,'deleted'
+
+# And remake the directory
+os.makedirs(qdir)
+
+# Dump the current environment
+with open(join(qdir,'environment.sh'),'w') as env:
     for k,v in os.environ.iteritems():
-        # Strange patch
+        # Strange patch....
         if k.startswith('BASH_FUNC_module'): continue
 
         env.write('export '+k+'="'+v+'"\n')
 
-
-stdout = tmpdir+'/out.txt'
-if os.path.exists(stdout):
-    os.remove(stdout)
-
-stderr = tmpdir+'/err.txt'
-if os.path.exists(stderr):
-    os.remove(stderr)
-# prepare the script
+# Script template
 script = '''
 #!/bin/bash
 START_TIME=`date`
-cd {tmpdir}
+cd {qdir}
 source environment.sh
 cd {cwd}
 CMD="{cmd}"
@@ -59,16 +59,40 @@ echo $CMD
 {cmd}
 res=$?
 echo Exit code: $res
-echo `date` - $res -  {tag} [started: $START_TIME ]>> qexe.log
+echo Done on `date` \| $res -  {jid} [started: $START_TIME ]>> qexe.log
 '''
-# print script.format(tmpdir = tmpdir, cwd = cwd, cmd=cmd, tag=tag)
-run = open(tmpdir+'/run.sh','w')
-run.write(script.format(tmpdir = tmpdir, cwd = cwd, cmd=cmd, tag=tag))
-run.close()
+
+stdout = join(qdir,'out.txt')
+stderr = join(qdir,'stderr.txt')
+runsh = join(qdir,'run.sh')
+
+# print script.format(qdir = qdir, cwd = cwd, cmd=cmd, jid=args.jid)
+with open(runsh,'w') as runfile:
+    runfile.write(script.format(qdir = qdir, cwd = cwd, cmd=cmd, jid=args.jid))
+
 # set the correct flags
-os.chmod(tmpdir+'/run.sh',stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+os.chmod(runsh,stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+
+# Build qsum command
+qcmd = ' '.join([
+    # Qsub...
+    'qsub',
+    # Queue name
+    '-q '+args.queue,
+    # Not sure, but it must be useful
+    '-j y',
+    # job id
+    '-N '+args.jid,
+    # Stdout and stderr destination
+    '-o '+stdout,
+    '-e '+stderr,
+    # And the shell script
+    runsh
+    ])
+
+
+print qcmd
 # lauch it on qsub
-if not opt.dryrun:
-    os.system('qsub -q '+queue+' -j y -N '+tag+' -o '+tmpdir+'/out.txt -e '+tmpdir+'/err.txt '+tmpdir+'/run.sh')
-print tmpdir
+if not args.dryrun:
+    subprocess.call(qcmd.split())
 

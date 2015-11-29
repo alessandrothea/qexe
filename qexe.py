@@ -8,11 +8,12 @@ import stat
 import argparse
 import subprocess
 
-from os.path import exists,join
+from os.path import exists,join,realpath
 
 # usage = 'usage: %prog'
 parser = argparse.ArgumentParser()
 parser.add_argument('jid',help='Job ID', default=None)
+parser.add_argument('-w','--workdir',dest='workdir', default=None, help='Work directory')
 parser.add_argument('-q','--queue',dest='queue',help='Queue', default='short.q')
 parser.add_argument('-n','--dryrun',dest='dryrun' , help='Dryrun', default=False, action='store_true')
 parser.add_argument('cmd', metavar='cmd', nargs='+',
@@ -29,7 +30,10 @@ print 'Preparing the execution of \''+cmd+'\' on the batch system'
 cwd = os.getcwd()
 
 # Create a local directory where to store jobs
-qdir = join(cwd,'qexe',args.jid)
+qdir = join(realpath(args.workdir) if args.workdir is not None else cwd,'qexe',args.jid)
+
+print qdir
+# sys.exit(0)
 
 # Cleanup
 if exists(qdir):

@@ -10,6 +10,85 @@ import subprocess
 
 from os.path import exists,join,realpath
 
+
+#
+# Runners
+#
+class RunnerBase(object):
+
+    def __init__(self, queue, jid, outpath, errpath, script ):
+        
+        self._queue = queue
+        self._jid = jid
+        self._outpath = outpath
+        self._errpath = errpath
+        self._scriptpath = script
+
+    def run(self, go=True):
+        cmd = self.getCmd();
+        print cmd
+        # lauch it on qsub
+        if go:
+            subprocess.call(cmd.split())
+
+#
+# Qsub runner
+#
+class QRunner(RunnerBase):
+
+    def __init__(self, *args, **kwargs):
+        super(QRunner, self).__init__(*args, **kwargs)
+
+    def getCmd(self):
+        # Build qsum command
+        qcmd = ' '.join([
+            # Qsub...
+            'qsub',
+            # Queue name
+            '-q '+self._queue,
+            # Not sure, but it must be useful
+            '-j y',
+            # job id
+            '-N '+self._jid,
+            # Stdout and stderr destination
+            '-o '+self._outpath,
+            '-e '+self._errpath,
+            # And the shell script
+            self._scriptpath
+            ])
+
+        return qcmd
+
+#
+# Bsub runner
+#
+class BRunner(RunnerBase):
+
+    def __init__(self, *args, **kwargs):
+        super(BRunner, self).__init__(*args, **kwargs)
+
+    def getCmd(self):
+        # Build qsum command
+        bcmd = ' '.join([
+            # Qsub...
+            'bsub',
+            # Queue name
+            '-q '+self._queue,
+            # job id
+            '-J '+self._jid,
+            # Stdout and stderr destination
+            '-o '+self._outpath,
+            '-e '+self._stderr,
+            # And the shell script
+            self._script
+            ])
+
+        return bcmd
+
+
+#
+# Writers
+#
 class ScriptWriterBase(object):
 
     def __init__(self, qdir, cwd, cmd, jid):
@@ -32,8 +111,12 @@ class ScriptWriterBase(object):
         with open(self.runsh,'w') as runfile:
             runfile.write(template.format(qdir = self._qdir, cwd = self._cwd, cmd = self._cmd, jid = self._jid))
 
-    
+        # Set correct flags
+        os.chmod(self.runsh,stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
 
+#
+#  Bash script writer
+#
 class BashScriptWriter(ScriptWriterBase):
 
     def __init__(self, *args, **kwargs):
@@ -73,7 +156,9 @@ echo Done on `date` \| $res -  {jid} [started: $START_TIME ]>> qexe.log
 
         return script
 
-
+#
+# TCSH script writer
+#
 class TcshScriptWriter(ScriptWriterBase):
 
     def __init__(self, *args, **kwargs):
@@ -145,39 +230,8 @@ if exists(qdir):
 # And remake the directory
 os.makedirs(qdir)
 
-# # Dump the current environment
-# with open(join(qdir,'environment.sh'),'w') as env:
-#     for k,v in os.environ.iteritems():
-#         # Strange patch....
-#         if k.startswith('BASH_FUNC_module'): continue
-
-#         env.write('export '+k+'="'+v+'"\n')
-
-# # Script template
-# script = '''
-# #!/bin/bash
-# START_TIME=`date`
-# cd {qdir}
-# source environment.sh
-# cd {cwd}
-# CMD="{cmd}"
-# echo $CMD
-# {cmd}
-# res=$?
-# echo Exit code: $res
-# echo Done on `date` \| $res -  {jid} [started: $START_TIME ]>> qexe.log
-# '''
-
-# stdout = join(qdir,'out.txt')
-# stderr = join(qdir,'stderr.txt')
-# runsh = join(qdir,'run.sh')
-
-# # print script.format(qdir = qdir, cwd = cwd, cmd=cmd, jid=args.jid)
-# with open(runsh,'w') as runfile:
-#     runfile.write(script.format(qdir = qdir, cwd = cwd, cmd=cmd, jid=args.jid))
-
-# writer = BashScriptWriter(qdir, cwd, cmd, args.jid);
-writer = TcshScriptWriter(qdir, cwd, cmd, args.jid);
+writer = BashScriptWriter(qdir, cwd, cmd, args.jid);
+# writer = TcshScriptWriter(qdir, cwd, cmd, args.jid);
 
 # Dump current environment
 writer.writeEnv()
@@ -185,29 +239,9 @@ writer.writeEnv()
 # Write run script
 writer.writeRunScript()
 
-# Set correct flags
-os.chmod(writer.runsh,stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+# Create a runner object
+runner = QRunner(args.queue, args.jid, writer.stdout, writer.stderr, writer.runsh)
 
-# Build qsum command
-qcmd = ' '.join([
-    # Qsub...
-    'qsub',
-    # Queue name
-    '-q '+args.queue,
-    # Not sure, but it must be useful
-    '-j y',
-    # job id
-    '-N '+args.jid,
-    # Stdout and stderr destination
-    '-o '+writer.stdout,
-    '-e '+writer.stderr,
-    # And the shell script
-    writer.runsh
-    ])
-
-
-print qcmd
-# lauch it on qsub
-if not args.dryrun:
-    subprocess.call(qcmd.split())
+# And Go!
+runner.run()
 

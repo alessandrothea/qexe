@@ -10,14 +10,116 @@ import subprocess
 
 from os.path import exists,join,realpath
 
+class ScriptWriterBase(object):
+
+    def __init__(self, qdir, cwd, cmd, jid):
+        self._qdir = qdir
+        self._cwd  = cwd 
+        self._cmd = cmd
+        self._jid = jid
+
+    @property
+    def stdout(self):
+        return join(self._qdir,'out.txt')
+
+    @property
+    def stderr(self):
+        return join(self._qdir,'stderr.txt')
+
+    def writeRunScript(self):
+        template = self.getRunTemplate();
+        # print script.format(qdir = qdir, cwd = cwd, cmd=cmd, jid=args.jid)
+        with open(self.runsh,'w') as runfile:
+            runfile.write(template.format(qdir = self._qdir, cwd = self._cwd, cmd = self._cmd, jid = self._jid))
+
+    
+
+class BashScriptWriter(ScriptWriterBase):
+
+    def __init__(self, *args, **kwargs):
+        super(BashScriptWriter, self).__init__(*args, **kwargs)
+
+    @property
+    def runsh(self):
+        return join(self._qdir,'run.sh')
+
+    def writeEnv(self):
+        # Dump current environment
+        with open(join(qdir,'environment.sh'),'w') as env:
+            env.write('#!/bin/bash\n')
+            for k,v in os.environ.iteritems():
+                # Strange patch....
+                if k.startswith('BASH_FUNC_module'): continue
+
+                env.write('export '+k+'="'+v+'"\n')
+
+
+    def getRunTemplate(self):
+        # Script template
+        script = '''#!/bin/bash
+START_TIME=`date`
+cd {qdir}
+source environment.sh
+cd {cwd}
+CMD="{cmd}"
+echo $CMD
+{cmd}
+res=$?
+echo =========================================================
+echo Exit code: $res
+echo =========================================================
+echo Done on `date` \| $res -  {jid} [started: $START_TIME ]>> qexe.log
+'''
+
+        return script
+
+
+class TcshScriptWriter(ScriptWriterBase):
+
+    def __init__(self, *args, **kwargs):
+        super(TcshScriptWriter, self).__init__(*args, **kwargs)
+
+    @property
+    def runsh(self):
+        return join(self._qdir,'run.csh')
+
+    def writeEnv(self):
+        # Dump current environment
+        with open(qdir+'/environment.csh','w') as env:
+            env.write('#!/bin/tcsh\n')
+            for k,v in os.environ.iteritems():
+                # Strange patch....
+                if k.startswith('BASH_FUNC_module'): continue
+
+                env.write('setenv %s "%s"\n' % (k,v))
+
+    def getRunTemplate(self):
+        # prepare the script
+        script ='''#!/bin/tcsh
+set START_TIME=`date`
+cd {qdir}
+source environment.csh
+cd {cwd}
+set CMD="{cmd}"
+echo $CMD
+{cmd}
+set res=$?
+echo =========================================================
+echo Exit code: $res
+echo =========================================================
+echo Done on `date` - $res -  {jid} [started: $START_TIME ]>> qexe.log
+'''
+
+        return script
+
+
 # usage = 'usage: %prog'
 parser = argparse.ArgumentParser()
 parser.add_argument('jid',help='Job ID', default=None)
 parser.add_argument('-w','--workdir',dest='workdir', default=None, help='Work directory')
 parser.add_argument('-q','--queue',dest='queue',help='Queue', default='short.q')
 parser.add_argument('-n','--dryrun',dest='dryrun' , help='Dryrun', default=False, action='store_true')
-parser.add_argument('cmd', metavar='cmd', nargs='+',
-                   help='Commands')
+parser.add_argument('cmd', metavar='cmd', nargs='+',help='Commands')
 # Let's go
 args = parser.parse_args()
 if args.jid is None:
@@ -43,39 +145,48 @@ if exists(qdir):
 # And remake the directory
 os.makedirs(qdir)
 
-# Dump the current environment
-with open(join(qdir,'environment.sh'),'w') as env:
-    for k,v in os.environ.iteritems():
-        # Strange patch....
-        if k.startswith('BASH_FUNC_module'): continue
+# # Dump the current environment
+# with open(join(qdir,'environment.sh'),'w') as env:
+#     for k,v in os.environ.iteritems():
+#         # Strange patch....
+#         if k.startswith('BASH_FUNC_module'): continue
 
-        env.write('export '+k+'="'+v+'"\n')
+#         env.write('export '+k+'="'+v+'"\n')
 
-# Script template
-script = '''
-#!/bin/bash
-START_TIME=`date`
-cd {qdir}
-source environment.sh
-cd {cwd}
-CMD="{cmd}"
-echo $CMD
-{cmd}
-res=$?
-echo Exit code: $res
-echo Done on `date` \| $res -  {jid} [started: $START_TIME ]>> qexe.log
-'''
+# # Script template
+# script = '''
+# #!/bin/bash
+# START_TIME=`date`
+# cd {qdir}
+# source environment.sh
+# cd {cwd}
+# CMD="{cmd}"
+# echo $CMD
+# {cmd}
+# res=$?
+# echo Exit code: $res
+# echo Done on `date` \| $res -  {jid} [started: $START_TIME ]>> qexe.log
+# '''
 
-stdout = join(qdir,'out.txt')
-stderr = join(qdir,'stderr.txt')
-runsh = join(qdir,'run.sh')
+# stdout = join(qdir,'out.txt')
+# stderr = join(qdir,'stderr.txt')
+# runsh = join(qdir,'run.sh')
 
-# print script.format(qdir = qdir, cwd = cwd, cmd=cmd, jid=args.jid)
-with open(runsh,'w') as runfile:
-    runfile.write(script.format(qdir = qdir, cwd = cwd, cmd=cmd, jid=args.jid))
+# # print script.format(qdir = qdir, cwd = cwd, cmd=cmd, jid=args.jid)
+# with open(runsh,'w') as runfile:
+#     runfile.write(script.format(qdir = qdir, cwd = cwd, cmd=cmd, jid=args.jid))
 
-# set the correct flags
-os.chmod(runsh,stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+# writer = BashScriptWriter(qdir, cwd, cmd, args.jid);
+writer = TcshScriptWriter(qdir, cwd, cmd, args.jid);
+
+# Dump current environment
+writer.writeEnv()
+
+# Write run script
+writer.writeRunScript()
+
+# Set correct flags
+os.chmod(writer.runsh,stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
 
 # Build qsum command
 qcmd = ' '.join([
@@ -88,10 +199,10 @@ qcmd = ' '.join([
     # job id
     '-N '+args.jid,
     # Stdout and stderr destination
-    '-o '+stdout,
-    '-e '+stderr,
+    '-o '+writer.stdout,
+    '-e '+writer.stderr,
     # And the shell script
-    runsh
+    writer.runsh
     ])
 
 

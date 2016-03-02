@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+#
+# author "Alessandro Thea"
+# version = "1.0.0"
+# maintainer "Alessandro Thea"
+# email "alessandro.thea@cern.ch"
+#
 
 import tempfile
 import shutil

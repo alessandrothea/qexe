@@ -1,7 +1,7 @@
 qexe
 ====
 
-Helper script to submit jobs on qsub bathc system.
+Helper script to submit jobs on qsub batch system.
 ```
 usage: qexe.py [-h] [-w WORKDIR] [-q QUEUE] [-n] jid cmd [cmd ...]
 

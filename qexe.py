@@ -207,12 +207,19 @@ echo Done on `date` - $res -  {jid} [started: $START_TIME ]>> qexe.log
         return script
 
 
+runnerMap = {
+    'qsub': QRunner,
+    'bsub': BRunner,
+}
+
+
 # usage = 'usage: %prog'
 parser = argparse.ArgumentParser()
 parser.add_argument('jid',help='Job ID', default=None)
 parser.add_argument('-w','--workdir',dest='workdir', default=None, help='Work directory')
 parser.add_argument('-q','--queue',dest='queue',help='Queue', default='short.q')
 parser.add_argument('-n','--dryrun',dest='dryrun' , help='Dryrun', default=False, action='store_true')
+parser.add_argument('-e','--engine',dest='engine' , choices=['qsub','bsub'], help='Engine', default='qsub')
 parser.add_argument('cmd', metavar='cmd', nargs='+',help='Commands')
 # Let's go
 args = parser.parse_args()
@@ -229,7 +236,6 @@ cwd = os.getcwd()
 qdir = join(realpath(args.workdir) if args.workdir is not None else cwd,'qexe',args.jid)
 
 print qdir
-# sys.exit(0)
 
 # Cleanup
 if exists(qdir):
@@ -249,7 +255,7 @@ writer.writeEnv()
 writer.writeRunScript()
 
 # Create a runner object
-runner = QRunner(args.queue, args.jid, writer.stdout, writer.stderr, writer.runsh)
+runner = runnerMap[args.engine](args.queue, args.jid, writer.stdout, writer.stderr, writer.runsh)
 
 # And Go!
 runner.run( not args.dryrun )

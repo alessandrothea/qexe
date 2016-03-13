@@ -6,7 +6,10 @@ else
     log="qexe.log"
 fi
 
-tail -n 30 $log
+if [ -e "$log" ];
+then
+    tail -n 30 $log
+fi
 njobs=$(( $(qstat | wc -l)-2 ))
 (($njobs<0)) && njobs=0
 echo Remaining jobs: $njobs

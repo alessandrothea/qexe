@@ -84,9 +84,9 @@ class BRunner(RunnerBase):
             '-J '+self._jid,
             # Stdout and stderr destination
             '-o '+self._outpath,
-            '-e '+self._stderr,
+            '-e '+self._errpath,
             # And the shell script
-            self._script
+            self._scriptpath
             ])
 
         return bcmd
@@ -118,7 +118,10 @@ class ScriptWriterBase(object):
             runfile.write(template.format(qdir = self._qdir, cwd = self._cwd, cmd = self._cmd, jid = self._jid))
 
         # Set correct flags
-        os.chmod(self.runsh,stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+        os.chmod(self.runsh,
+            stat.S_IWUSR | stat.S_IRUSR | stat.S_IXUSR |
+            stat.S_IRGRP | stat.S_IXGRP |
+            stat.S_IROTH | stat.S_IXOTH )
 
 #
 #  Bash script writer
@@ -249,5 +252,5 @@ writer.writeRunScript()
 runner = QRunner(args.queue, args.jid, writer.stdout, writer.stderr, writer.runsh)
 
 # And Go!
-runner.run()
+runner.run( not args.dryrun )
 
